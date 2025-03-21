@@ -82,39 +82,39 @@ extern "C"
    * executes the corresponding operation, and then updates pc appropriately.
    *
    * Supported instructions include:
-   *   - 00E0: CLS  - Clear the display.
-   *   - 00EE: RET  - Return from a subroutine (requires stack support).
-   *   - 1NNN: JP addr  - Jump to address NNN.
-   *   - 2NNN: CALL addr  - Call subroutine at address NNN (stack support required).
-   *   - 3XNN: SE Vx, byte  - Skip next instruction if Vx equals NN.
-   *   - 4XNN: SNE Vx, byte - Skip next instruction if Vx does NOT equal NN.
-   *   - 6XNN: LD Vx, byte  - Load immediate value NN into register Vx.
-   *   - 7XNN: ADD Vx, byte  - Add immediate value NN to register Vx (no carry).
-   *   - 8XY0: LD Vx, Vy    - Set Vx = Vy.
-   *   - 8XY1: OR Vx, Vy    - Set Vx = Vx OR Vy.
-   *   - 8XY2: AND Vx, Vy   - Set Vx = Vx AND Vy.
-   *   - 8XY3: XOR Vx, Vy   - Set Vx = Vx XOR Vy.
-   *   - 8XY4: ADD Vx, Vy   - Add Vy to Vx; set VF = carry.
-   *   - 8XY5: SUB Vx, Vy   - Subtract Vy from Vx; set VF = NOT borrow.
-   *   - 8XY6: SHR Vx       - Shift Vx right by 1; VF set to least significant bit.
-   *   - 8XY7: SUBN Vx, Vy  - Set Vx = Vy - Vx; VF = NOT borrow.
-   *   - 8XYE: SHL Vx       - Shift Vx left by 1; VF set to most significant bit.
-   *   - 9XY0: SNE Vx, Vy   - Skip next instruction if Vx != Vy.
-   *   - ANNN: LD I, addr  - Set index register I = NNN.
-   *   - BNNN: JP V0, addr - Jump to address NNN plus V0.
-   *   - CXNN: RND Vx, byte - Set Vx = (random byte) AND NN.
+   *   - 00E0: CLS            - Clear the display.
+   *   - 00EE: RET            - Return from a subroutine (requires stack support).
+   *   - 1NNN: JP addr        - Jump to address NNN.
+   *   - 2NNN: CALL addr      - Call subroutine at address NNN (stack support required).
+   *   - 3XNN: SE Vx, byte    - Skip next instruction if Vx equals NN.
+   *   - 4XNN: SNE Vx, byte   - Skip next instruction if Vx does NOT equal NN.
+   *   - 6XNN: LD Vx, byte    - Load immediate value NN into register Vx.
+   *   - 7XNN: ADD Vx, byte   - Add immediate value NN to register Vx (no carry).
+   *   - 8XY0: LD Vx, Vy      - Set Vx = Vy.
+   *   - 8XY1: OR Vx, Vy      - Set Vx = Vx OR Vy.
+   *   - 8XY2: AND Vx, Vy     - Set Vx = Vx AND Vy.
+   *   - 8XY3: XOR Vx, Vy     - Set Vx = Vx XOR Vy.
+   *   - 8XY4: ADD Vx, Vy     - Add Vy to Vx; set VF = carry.
+   *   - 8XY5: SUB Vx, Vy     - Subtract Vy from Vx; set VF = NOT borrow.
+   *   - 8XY6: SHR Vx         - Shift Vx right by 1; VF set to least significant bit.
+   *   - 8XY7: SUBN Vx, Vy    - Set Vx = Vy - Vx; VF = NOT borrow.
+   *   - 8XYE: SHL Vx         - Shift Vx left by 1; VF set to most significant bit.
+   *   - 9XY0: SNE Vx, Vy     - Skip next instruction if Vx != Vy.
+   *   - ANNN: LD I, addr     - Set index register I = NNN.
+   *   - BNNN: JP V0, addr    - Jump to address NNN plus V0.
+   *   - CXNN: RND Vx, byte   - Set Vx = (random byte) AND NN.
    *   - DXYN: DRW Vx, Vy, nibble - Draw sprite at (Vx, Vy) with height N.
-   *   - EX9E: SKP Vx     - Skip next instruction if key with value Vx is pressed.
-   *   - EXA1: SKNP Vx    - Skip next instruction if key with value Vx is NOT pressed.
-   *   - Fx07: LD Vx, DT  - Load delay timer value into Vx.
-   *   - Fx0A: LD Vx, K   - Wait for a key press, then store that key’s value in Vx.
-   *   - Fx15: LD DT, Vx  - Set delay timer to value in Vx.
-   *   - Fx18: LD ST, Vx  - Set sound timer to value in Vx.
-   *   - Fx1E: ADD I, Vx  - Add Vx to index register I.
-   *   - Fx29: LD F, Vx   - Set I to the location of the sprite for the hex digit in Vx.
-   *   - Fx33: LD B, Vx   - Store BCD representation of Vx in memory at I, I+1, and I+2.
-   *   - Fx55: LD [I], V0..Vx  - Store registers V0 through Vx in memory starting at I.
-   *   - Fx65: LD V0..Vx, [I]  - Read registers V0 through Vx from memory starting at I.
+   *   - EX9E: SKP Vx         - Skip next instruction if key with value Vx is pressed.
+   *   - EXA1: SKNP Vx        - Skip next instruction if key with value Vx is NOT pressed.
+   *   - Fx07: LD Vx, DT      - Load delay timer value into Vx.
+   *   - Fx0A: LD Vx, K       - Wait for a key press, then store that key’s value in Vx.
+   *   - Fx15: LD DT, Vx      - Set delay timer to value in Vx.
+   *   - Fx18: LD ST, Vx      - Set sound timer to value in Vx.
+   *   - Fx1E: ADD I, Vx      - Add Vx to index register I.
+   *   - Fx29: LD F, Vx       - Set I to the location of the sprite for the hex digit in Vx.
+   *   - Fx33: LD B, Vx       - Store BCD representation of Vx in memory at I, I+1, and I+2.
+   *   - Fx55: LD [I], V0..Vx - Store registers V0 through Vx in memory starting at I.
+   *   - Fx65: LD V0..Vx, [I] - Read registers V0 through Vx from memory starting at I.
    *
    * Any unsupported opcode is logged and skipped.
    */
@@ -220,6 +220,25 @@ extern "C"
         pc += 4;
       else
         pc += 2;
+      break;
+    }
+    case 0x5000:
+    {
+      /**
+       * 5XY0 — SNE Vx, Vy: Skip next instruction if Vx ≠ Vy.
+       * If the value in register Vx does NOT equal the value in Vy,
+       * advance pc by 4 (skipping one 2‑byte opcode). Otherwise advance by 2.
+       */
+      uint8_t x = (opcode & 0x0F00) >> 8;
+      uint8_t y = (opcode & 0x00F0) >> 4;
+      if (V[x] != V[y])
+      {
+        pc += 4;
+      }
+      else
+      {
+        pc += 2;
+      }
       break;
     }
     case 0x6000:
