@@ -44,7 +44,7 @@ extern "C"
   }
 
   // Initialize the Chip‑8 state.
-  void init_chip8()
+  void init()
   {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
     cls();

@@ -103,7 +103,7 @@ async function initEmulator() {
   if (!Module.calledRun) {
     await new Promise(resolve => { Module.onRuntimeInitialized = resolve; });
   }
-  Module._init_chip8();
+  Module._init();
   const programData = await loadChip8Program();
   // Allocate memory in WASM for the program data.
   const ptr = Module._malloc(programData.length);
