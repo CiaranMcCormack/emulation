@@ -4,10 +4,8 @@ import Stats from 'stats.js'
 import Box from '@mui/material/Box'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Checkbox from '@mui/material/Checkbox'
-import { createProgram, setupBuffers } from '../utils/graphics'
-import { useEvent } from '../utils/hooks'
-
-declare var Module: any
+import { createProgram, setupBuffers } from '../../utils/graphics'
+import { useEvent, useScript } from '../../utils/hooks'
 
 const chip8KeyMap: Record<string, number> = {
   Digit1: 0x1, Digit2: 0x2, Digit3: 0x3, Digit4: 0xC,
@@ -21,6 +19,19 @@ interface Props {
 }
 
 const Chip8: React.FC<Props> = ({ rom }) => {
+  const loaded = useScript('/chip8.js');
+  const [Module, setModule] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const mod = (window as any).Module;
+    setModule(mod);
+
+    const start = () => mod._init();
+    if (mod.calledRun) start();
+    else mod.onRuntimeInitialized = start;
+  }, [loaded]);
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const oscillatorRef = useRef<OscillatorNode | null>(null)
   const [soundEnabled, setSoundEnabled] = useState(true)
@@ -56,6 +67,8 @@ const Chip8: React.FC<Props> = ({ rom }) => {
   })
 
   useEffect(() => {
+    if (!Module) return;
+
     stats.showPanel(0)
     stats.dom.style.position = 'absolute'
     stats.dom.style.top = '0'
@@ -69,13 +82,10 @@ const Chip8: React.FC<Props> = ({ rom }) => {
     document.addEventListener('keydown', handleKey('setKeyDown'))
     document.addEventListener('keyup', handleKey('setKeyUp'))
 
-    
-
     const init = async () => {
       if (!Module.calledRun) {
         await new Promise(resolve => { Module.onRuntimeInitialized = resolve })
       }
-      Module._init()
 
       const ptr = Module._malloc(rom.length)
       Module.HEAPU8.set(rom, ptr)
@@ -126,7 +136,7 @@ const Chip8: React.FC<Props> = ({ rom }) => {
       document.removeEventListener('keydown', handleKey('setKeyDown'))
       document.removeEventListener('keyup', handleKey('setKeyUp'))
     }
-  }, [])
+  }, [Module])
 
   return (
     <Box

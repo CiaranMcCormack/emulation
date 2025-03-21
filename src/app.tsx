@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import Chip8 from './emulators/Chip8'
+import Chip8 from './emulators/chip8'
 import { Box } from '@mui/material'
 import FileLoader from './fileLoader'
 

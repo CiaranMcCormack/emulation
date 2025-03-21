@@ -3,14 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chip‑8 Emulator</title>
+    <title>Emulator</title>
   </head>
   <body>
     <!-- React root container -->
     <div id="root"></div>
-
-    <!-- Emscripten glue code must load before React so Module is ready -->
-    <script src="/chip8.js"></script>
 
     <!-- Your React entrypoint -->
     <script type="module" src="/src/main.tsx"></script>
