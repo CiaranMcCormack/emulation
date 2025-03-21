@@ -8,7 +8,13 @@
   <body>
     <!-- You can keep your #app container; we add a canvas inside it -->
     <div id="app">
-      <canvas id="glCanvas"></canvas>
+      <label>
+        <input type="checkbox" id="soundToggle" checked />
+        Enable Sound
+      </label>
+      <div>
+        <canvas id="glCanvas"></canvas>
+      </div>
     </div>
     <!-- Load the Emscripten glue code -->
     <script src="/chip8.js"></script>

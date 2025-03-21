@@ -80,6 +80,15 @@ let oscillator: OscillatorNode | null = null; // Oscillator for the beep sound.
  * This function should be called each frame.
  */
 function updateSound() {
+  const soundToggle = document.getElementById('soundToggle') as HTMLInputElement;
+  if (!soundToggle || !soundToggle.checked) {
+    if (oscillator !== null) {
+      oscillator.stop();
+      oscillator.disconnect();
+      oscillator = null;
+    }
+    return;
+  }
   // Call the exported getSoundTimer() from the WASM module.
   const st = Module._getSoundTimer();
   if (st > 0 && oscillator === null) {
