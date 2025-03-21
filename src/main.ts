@@ -64,51 +64,96 @@ const fragmentShaderSource = `
   }
 `;
 
-// Load the IBM Logo.ch8 program from the public directory.
+// Load the Pong.ch8 program from the public directory.
 async function loadChip8Program(): Promise<Uint8Array> {
-  //const response = await fetch('/IBM Logo.ch8');
+  // Change the URL to your ROM file name.
   const response = await fetch('/pong.ch8');
   const buffer = await response.arrayBuffer();
   return new Uint8Array(buffer);
 }
 
-const audioCtx = new AudioContext();
-let oscillator: OscillatorNode | null = null;
+const audioCtx = new AudioContext(); // Create an AudioContext for sound.
+let oscillator: OscillatorNode | null = null; // Oscillator for the beep sound.
 
 /**
-	•	Checks the Chip‑8 sound timer and starts or stops a beep accordingly.
-	•	This function should be called each frame.
-*/
+ * Checks the Chip‑8 sound timer and starts or stops a beep accordingly.
+ * This function should be called each frame.
+ */
 function updateSound() {
   // Call the exported getSoundTimer() from the WASM module.
-  const st = Module.ccall("getSoundTimer", "number", [], []);
+  const st = Module._getSoundTimer();
   if (st > 0 && oscillator === null) {
-  // Create an oscillator node to play a square wave beep.
-  oscillator = audioCtx.createOscillator();
-  oscillator.type = "square";
-  oscillator.frequency.value = 440; // Frequency in Hz (A4 note)
-  oscillator.connect(audioCtx.destination);
-  oscillator.start();
+    // Create an oscillator node to play a square wave beep.
+    oscillator = audioCtx.createOscillator();
+    oscillator.type = "square";
+    oscillator.frequency.value = 440; // Frequency in Hz (A4 note)
+    oscillator.connect(audioCtx.destination);
+    oscillator.start();
   } else if (st === 0 && oscillator !== null) {
-  // Stop and disconnect the oscillator if the sound timer reaches 0.
-  oscillator.stop();
-  oscillator.disconnect();
-  oscillator = null;
+    // Stop and disconnect the oscillator if the sound timer reaches 0.
+    oscillator.stop();
+    oscillator.disconnect();
+    oscillator = null;
   }
-  }
+}
 
-// Initialize the Chip-8 emulator by loading the program into memory.
+// Keyboard mapping: map physical keyboard keys to Chip‑8 keys (0–F).
+// Many implementations use the keys 1,2,3,4, Q,W,E,R, A,S,D,F, Z,X,C,V.
+const chip8KeyMap: Record<string, number> = {
+  'Digit1': 0x1,
+  'Digit2': 0x2,
+  'Digit3': 0x3,
+  'Digit4': 0xC,
+  'KeyQ':   0x4,
+  'KeyW':   0x5,
+  'KeyE':   0x6,
+  'KeyR':   0xD,
+  'KeyA':   0x7,
+  'KeyS':   0x8,
+  'KeyD':   0x9,
+  'KeyF':   0xE,
+  'KeyZ':   0xA,
+  'KeyX':   0x0,
+  'KeyC':   0xB,
+  'KeyV':   0xF
+};
+
+/**
+ * Event listener for keydown events.
+ * When a mapped key is pressed, it calls the exported C++ function setKeyDown with the corresponding Chip‑8 key.
+ */
+document.addEventListener('keydown', (event) => {
+  const chip8Key = chip8KeyMap[event.code];
+  if (chip8Key !== undefined) {
+    Module._setKeyDown(chip8Key);
+  }
+});
+
+/**
+ * Event listener for keyup events.
+ * When a mapped key is released, it calls the exported C++ function setKeyUp with the corresponding Chip‑8 key.
+ */
+document.addEventListener('keyup', (event) => {
+  const chip8Key = chip8KeyMap[event.code];
+  if (chip8Key !== undefined) {
+    Module._setKeyUp(chip8Key);
+  }
+});
+
+// Initialize the Chip‑8 emulator by loading the program into memory.
 async function initEmulator() {
   // Ensure the WASM module is initialized.
   if (!Module.calledRun) {
     await new Promise(resolve => { Module.onRuntimeInitialized = resolve; });
   }
+  // Call the C++ initialization function (e.g., _init()).
   Module._init();
   const programData = await loadChip8Program();
   // Allocate memory in WASM for the program data.
   const ptr = Module._malloc(programData.length);
   Module.HEAPU8.set(programData, ptr);
-  Module.ccall('loadProgram', null, ['number', 'number'], [ptr, programData.length]);
+  // Call the loadProgram function in C++ with pointer and size.
+  Module._loadProgram(ptr, programData.length);
   Module._free(ptr);
 }
 
@@ -177,15 +222,18 @@ async function main() {
 
   let lastTime = performance.now();
 
-  // Main render loop: run a cycle (or more) then update the texture from the Chip-8 screen buffer.
+  // Main render loop: run cycles, update timers/sound, and render the display.
   function render() {
     const now = performance.now();
-    const delta = now - lastTime; // time in ms
+    const delta = now - lastTime; // time in ms since last frame
     lastTime = now;
-    
+
     stats.begin();
-    // Run one cycle per frame (adjust as needed).
+
+    // Run emulator cycles and update timers inside C++.
+    // Module._run is assumed to be your function that runs cycles and updates timers based on delta time.
     Module._run(10, delta);
+
     const screenPtr = Module._getScreen();
     const screenData = Module.HEAPU8.subarray(screenPtr, screenPtr + width * height);
     const imageData = new Uint8Array(width * height * 4);
@@ -200,10 +248,12 @@ async function main() {
     gl?.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl?.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, imageData);
     gl?.drawArrays(gl.TRIANGLES, 0, 6);
+
     stats.end();
 
+    // Update sound based on the Chip-8 sound timer.
     updateSound();
-    
+
     requestAnimationFrame(render);
   }
   render();

@@ -35,7 +35,6 @@ void cls()
 
 extern "C"
 {
-
   // Load a Chip‑8 program into memory starting at 0x200.
   void loadProgram(uint8_t *program, int size)
   {
@@ -558,6 +557,24 @@ extern "C"
   uint8_t getSoundTimer()
   {
     return soundTimer;
+  }
+
+  // Mark a key as pressed.
+  void setKeyDown(int key)
+  {
+    if (key >= 0 && key < 16)
+    {
+      keys[key] = 1;
+    }
+  }
+
+  // Mark a key as released.
+  void setKeyUp(int key)
+  {
+    if (key >= 0 && key < 16)
+    {
+      keys[key] = 0;
+    }
   }
 
 } // extern "C"
