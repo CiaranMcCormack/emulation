@@ -10,11 +10,20 @@
     "build:wasm": "em++ ./wasm/chip8.cpp -O3 -s WASM=1 -s EXPORTED_FUNCTIONS='[\"_init\",\"_loadProgram\",\"_run\",\"_getScreen\",\"_getScreenWidth\",\"_getScreenHeight\",\"_getSoundTimer\",\"_setKeyDown\", \"_setKeyUp\", \"_malloc\",\"_free\"]' -s EXPORTED_RUNTIME_METHODS='[\"ccall\",\"cwrap\"]' -o ./public/chip8.js"
   },
   "devDependencies": {
+    "@types/react": "^19.0.12",
+    "@types/react-dom": "^19.0.4",
     "@types/stats.js": "^0.17.3",
+    "@vitejs/plugin-react": "^4.3.4",
     "typescript": "~5.7.2",
     "vite": "^6.2.0"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/icons-material": "^6.4.8",
+    "@mui/material": "^6.4.8",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "stats.js": "^0.17.0"
   }
 }

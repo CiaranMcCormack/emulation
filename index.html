@@ -3,22 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chip 8 Emulator</title>
+    <title>Chip‑8 Emulator</title>
   </head>
   <body>
-    <!-- You can keep your #app container; we add a canvas inside it -->
-    <div id="app">
-      <label>
-        <input type="checkbox" id="soundToggle" checked />
-        Enable Sound
-      </label>
-      <div>
-        <canvas id="glCanvas"></canvas>
-      </div>
-    </div>
-    <!-- Load the Emscripten glue code -->
+    <!-- React root container -->
+    <div id="root"></div>
+
+    <!-- Emscripten glue code must load before React so Module is ready -->
     <script src="/chip8.js"></script>
-    <!-- Your main TypeScript code -->
-    <script type="module" src="/src/main.ts"></script>
+
+    <!-- Your React entrypoint -->
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
