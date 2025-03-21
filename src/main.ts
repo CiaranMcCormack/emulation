@@ -72,6 +72,31 @@ async function loadChip8Program(): Promise<Uint8Array> {
   return new Uint8Array(buffer);
 }
 
+const audioCtx = new AudioContext();
+let oscillator: OscillatorNode | null = null;
+
+/**
+	•	Checks the Chip‑8 sound timer and starts or stops a beep accordingly.
+	•	This function should be called each frame.
+*/
+function updateSound() {
+  // Call the exported getSoundTimer() from the WASM module.
+  const st = Module.ccall("getSoundTimer", "number", [], []);
+  if (st > 0 && oscillator === null) {
+  // Create an oscillator node to play a square wave beep.
+  oscillator = audioCtx.createOscillator();
+  oscillator.type = "square";
+  oscillator.frequency.value = 440; // Frequency in Hz (A4 note)
+  oscillator.connect(audioCtx.destination);
+  oscillator.start();
+  } else if (st === 0 && oscillator !== null) {
+  // Stop and disconnect the oscillator if the sound timer reaches 0.
+  oscillator.stop();
+  oscillator.disconnect();
+  oscillator = null;
+  }
+  }
+
 // Initialize the Chip-8 emulator by loading the program into memory.
 async function initEmulator() {
   // Ensure the WASM module is initialized.
@@ -176,6 +201,9 @@ async function main() {
     gl?.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, imageData);
     gl?.drawArrays(gl.TRIANGLES, 0, 6);
     stats.end();
+
+    updateSound();
+    
     requestAnimationFrame(render);
   }
   render();
