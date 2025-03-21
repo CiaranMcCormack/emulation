@@ -107,9 +107,10 @@ extern "C"
    *   - EX9E: SKP Vx     - Skip next instruction if key with value Vx is pressed.
    *   - EXA1: SKNP Vx    - Skip next instruction if key with value Vx is NOT pressed.
    *   - Fx07: LD Vx, DT  - Load delay timer value into Vx.
+   *   - Fx0A: LD Vx, K   - Wait for a key press, then store that key’s value in Vx.
    *   - Fx15: LD DT, Vx  - Set delay timer to value in Vx.
    *   - Fx18: LD ST, Vx  - Set sound timer to value in Vx.
-   *   - Fx1E: ADD I, Vx   - Add Vx to index register I.
+   *   - Fx1E: ADD I, Vx  - Add Vx to index register I.
    *   - Fx29: LD F, Vx   - Set I to the location of the sprite for the hex digit in Vx.
    *   - Fx33: LD B, Vx   - Store BCD representation of Vx in memory at I, I+1, and I+2.
    *   - Fx55: LD [I], V0..Vx  - Store registers V0 through Vx in memory starting at I.
@@ -451,9 +452,10 @@ extern "C"
        * In this implementation, we support:
        *
        * Fx07 - LD Vx, DT   : Load the current delay timer value into Vx.
+       * Fx0A - LD Vx, K    : Wait for a key press, then store that key’s value in Vx.
        * Fx15 - LD DT, Vx   : Set the delay timer to the value in Vx.
        * Fx18 - LD ST, Vx   : Set the sound timer to the value in Vx.
-       * Fx1E - ADD I, Vx    : Add Vx to the index register I.
+       * Fx1E - ADD I, Vx   : Add Vx to the index register I.
        * Fx29 - LD F, Vx    : Set I to the location of the sprite for the hexadecimal digit in Vx.
        * Fx33 - LD B, Vx    : Store the BCD representation of Vx in memory at I, I+1, and I+2.
        * Fx55 - LD [I], V0..Vx  : Store registers V0 through Vx in memory starting at I.
@@ -468,6 +470,30 @@ extern "C"
         V[x] = delayTimer;
         pc += 2;
         break;
+      case 0x0A:
+      {
+        /**
+         * Fx0A - LD Vx, K: Wait for a key press, then store that key’s value in Vx.
+         * Execution should pause here (pc does NOT advance) until any Chip‑8 key (0x0–0xF)
+         * is pressed. Once pressed, store the key index in Vx and increment pc.
+         */
+        bool pressed = false;
+        for (int k = 0; k < 16; k++)
+        {
+          if (keys[k])
+          {
+            V[x] = k;
+            pressed = true;
+            break;
+          }
+        }
+        if (pressed)
+        {
+          pc += 2;
+        }
+        // If no key is down, do NOT advance pc — effectively “blocking” until input
+        break;
+      }
       case 0x15:
         // Fx15: LD DT, Vx – Set delay timer to the value in Vx.
         delayTimer = V[x];
