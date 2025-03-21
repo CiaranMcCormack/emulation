@@ -27,6 +27,7 @@ function createShader(gl: WebGLRenderingContext, source: string, type: number): 
   }
   return shader;
 }
+
 function createProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: string): WebGLProgram {
   const vertexShader = createShader(gl, vsSource, gl.VERTEX_SHADER);
   const fragmentShader = createShader(gl, fsSource, gl.FRAGMENT_SHADER);
@@ -42,6 +43,7 @@ function createProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: st
   }
   return program;
 }
+
 const vertexShaderSource = `
   attribute vec2 a_position;
   attribute vec2 a_texCoord;
@@ -51,6 +53,7 @@ const vertexShaderSource = `
     v_texCoord = a_texCoord;
   }
 `;
+
 const fragmentShaderSource = `
   precision mediump float;
   varying vec2 v_texCoord;
@@ -63,7 +66,8 @@ const fragmentShaderSource = `
 
 // Load the IBM Logo.ch8 program from the public directory.
 async function loadChip8Program(): Promise<Uint8Array> {
-  const response = await fetch('/IBM Logo.ch8');
+  //const response = await fetch('/IBM Logo.ch8');
+  const response = await fetch('/pong.ch8');
   const buffer = await response.arrayBuffer();
   return new Uint8Array(buffer);
 }
@@ -146,11 +150,17 @@ async function main() {
   const textureLocation = gl.getUniformLocation(program, "u_texture");
   gl.uniform1i(textureLocation, 0);
 
+  let lastTime = performance.now();
+
   // Main render loop: run a cycle (or more) then update the texture from the Chip-8 screen buffer.
   function render() {
+    const now = performance.now();
+    const delta = now - lastTime; // time in ms
+    lastTime = now;
+    
     stats.begin();
     // Run one cycle per frame (adjust as needed).
-    Module._runCycles(10);
+    Module._run(10, delta);
     const screenPtr = Module._getScreen();
     const screenData = Module.HEAPU8.subarray(screenPtr, screenPtr + width * height);
     const imageData = new Uint8Array(width * height * 4);

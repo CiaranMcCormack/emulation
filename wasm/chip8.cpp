@@ -16,6 +16,17 @@ uint8_t V[16];
 uint16_t I;
 uint16_t pc;
 
+uint16_t stack[16]; // Stack to hold return addresses (Chip-8 typically supports 16 levels)
+uint8_t sp = 0;     // Stack pointer, initially 0 (points to the next free slot)
+
+uint8_t delayTimer = 0; // Delay timer: decrements at 60 Hz (in a full emulator)
+uint8_t soundTimer = 0; // Sound timer: decrements at 60 Hz and triggers sound when > 0
+
+uint8_t keys[16]; // Keypad state: 16 keys, each with a value of 0 (up) or 1 (down)
+
+float timerAccumulator = 0.0f;                   // Accumulated time for timers
+const float TIMER_INTERVAL_MS = 1000.0f / 60.0f; // ~16.67 ms at 60Hz
+
 // Clear the screen by zeroing the screen buffer.
 void cls()
 {
@@ -43,68 +54,89 @@ extern "C"
   }
 
   /**
-   * @brief Executes one cycle (one opcode) of the Chip-8 interpreter.
+   * Executes one cycle (one opcode) of the Chip-8 interpreter.
    *
-   * Chip-8 stores instructions (opcodes) in memory, starting at addresses 0x200 and up.
-   * Each instruction is 2 bytes (16 bits). The program counter (pc) points to the current
-   * instruction. This function:
-   *   1. Fetches the 16-bit opcode from memory[pc].
-   *   2. Decodes the opcode by looking at its high nibble (and sometimes more).
-   *   3. Executes the corresponding Chip-8 instruction (e.g., clear screen, jump, draw sprite).
-   *   4. Advances the program counter (pc) unless the instruction itself modifies pc (e.g. jump).
+   * This function fetches the next 2-byte opcode from memory at the address indicated by
+   * the program counter (pc), decodes it by inspecting its most significant nibble (and sometimes more),
+   * executes the corresponding operation, and then updates pc appropriately.
    *
-   * The instructions implemented here are:
-   *   - 00E0  (CLS)
-   *   - 00EE  (RET) [Stubbed]
-   *   - 1NNN  (JP addr)
-   *   - 2NNN  (CALL addr) [Stubbed]
-   *   - 3XNN  (SE Vx, byte)
-   *   - 6XNN  (LD Vx, byte)
-   *   - 7XNN  (ADD Vx, byte)
-   *   - ANNN  (LD I, addr)
-   *   - DXYN  (DRW Vx, Vy, nibble)
-   *   - Fx..  (Stubbed for future instructions)
+   * Supported instructions include:
+   *   - 00E0: CLS  - Clear the display.
+   *   - 00EE: RET  - Return from a subroutine (requires stack support).
+   *   - 1NNN: JP addr  - Jump to address NNN.
+   *   - 2NNN: CALL addr  - Call subroutine at address NNN (stack support required).
+   *   - 3XNN: SE Vx, byte  - Skip next instruction if Vx equals NN.
+   *   - 4XNN: SNE Vx, byte - Skip next instruction if Vx does NOT equal NN.
+   *   - 6XNN: LD Vx, byte  - Load immediate value NN into register Vx.
+   *   - 7XNN: ADD Vx, byte  - Add immediate value NN to register Vx (no carry).
+   *   - 8XY0: LD Vx, Vy    - Set Vx = Vy.
+   *   - 8XY1: OR Vx, Vy    - Set Vx = Vx OR Vy.
+   *   - 8XY2: AND Vx, Vy   - Set Vx = Vx AND Vy.
+   *   - 8XY3: XOR Vx, Vy   - Set Vx = Vx XOR Vy.
+   *   - 8XY4: ADD Vx, Vy   - Add Vy to Vx; set VF = carry.
+   *   - 8XY5: SUB Vx, Vy   - Subtract Vy from Vx; set VF = NOT borrow.
+   *   - 8XY6: SHR Vx       - Shift Vx right by 1; VF set to least significant bit.
+   *   - 8XY7: SUBN Vx, Vy  - Set Vx = Vy - Vx; VF = NOT borrow.
+   *   - 8XYE: SHL Vx       - Shift Vx left by 1; VF set to most significant bit.
+   *   - 9XY0: SNE Vx, Vy   - Skip next instruction if Vx != Vy.
+   *   - ANNN: LD I, addr  - Set index register I = NNN.
+   *   - BNNN: JP V0, addr - Jump to address NNN plus V0.
+   *   - CXNN: RND Vx, byte - Set Vx = (random byte) AND NN.
+   *   - DXYN: DRW Vx, Vy, nibble - Draw sprite at (Vx, Vy) with height N.
+   *   - EX9E: SKP Vx     - Skip next instruction if key with value Vx is pressed.
+   *   - EXA1: SKNP Vx    - Skip next instruction if key with value Vx is NOT pressed.
+   *   - Fx07: LD Vx, DT  - Load delay timer value into Vx.
+   *   - Fx15: LD DT, Vx  - Set delay timer to value in Vx.
+   *   - Fx18: LD ST, Vx  - Set sound timer to value in Vx.
+   *   - Fx1E: ADD I, Vx   - Add Vx to index register I.
+   *   - Fx29: LD F, Vx   - Set I to the location of the sprite for the hex digit in Vx.
+   *   - Fx33: LD B, Vx   - Store BCD representation of Vx in memory at I, I+1, and I+2.
+   *   - Fx55: LD [I], V0..Vx  - Store registers V0 through Vx in memory starting at I.
+   *   - Fx65: LD V0..Vx, [I]  - Read registers V0 through Vx from memory starting at I.
    *
-   * Any unrecognized or unsupported opcode is logged and then skipped.
+   * Any unsupported opcode is logged and skipped.
    */
   void emulateCycle()
   {
-    // Fetch 2 bytes from memory, combine them into a 16-bit opcode:
-    //   memory[pc] is the high byte, memory[pc + 1] is the low byte.
-    //   E.g., if memory[pc] = 0xA2 and memory[pc+1] = 0xF0, opcode = 0xA2F0.
+    // Fetch the opcode: combine two consecutive bytes into one 16-bit value.
     uint16_t opcode = (memory[pc] << 8) | memory[pc + 1];
 
-    // Use a switch on the highest nibble (opcode & 0xF000) to determine the instruction category.
+    // Decode the opcode by examining its most significant nibble.
     switch (opcode & 0xF000)
     {
     case 0x0000:
     {
-      // Instructions in the 0x0NNN range typically deal with clearing the screen (00E0)
-      // or returning from subroutines (00EE).
+      // Opcodes in the 0x0000 range are system instructions.
       if (opcode == 0x00E0)
       {
         /**
-         * 00E0: CLS
-         * Clear the screen. All pixels on the display are turned off (set to 0).
-         * In this implementation, cls() simply zeros out the 'screen' array.
+         * 00E0 - CLS: Clear the display.
+         * This instruction clears the entire screen by zeroing out the 'screen' array.
          */
         cls();
-        pc += 2; // Move to the next instruction (2 bytes).
+        pc += 2;
       }
       else if (opcode == 0x00EE)
       {
         /**
-         * 00EE: RET
-         * Return from a subroutine. Normally, this would pop the last address from
-         * the stack and set pc to that address. Here, it's just logged and pc is advanced.
-         * If your ROM uses subroutines, you'll need to implement a stack.
+         * 00EE - RET: Return from a subroutine.
+         * Normally, this instruction pops the last address off a stack and sets pc to that address.
+         * Here, if stack support is implemented, we pop from the stack; otherwise, log and advance.
          */
-        printf("Return opcode 0x00EE encountered, but subroutine support not implemented.\n");
-        pc += 2;
+        if (sp > 0)
+        {
+          sp--;
+          pc = stack[sp];
+        }
+        else
+        {
+          printf("Stack underflow on RET opcode: 0x%04X\n", opcode);
+          pc += 2;
+        }
       }
       else
       {
-        // Any other 0x0NNN opcode is typically unimplemented or system-specific.
+        // Unsupported or system-specific 0x0NNN opcode.
         printf("Unsupported 0x0000 opcode: 0x%04X\n", opcode);
         pc += 2;
       }
@@ -113,56 +145,69 @@ extern "C"
     case 0x1000:
     {
       /**
-       * 1NNN: JP addr
-       * Jump to address NNN. The high nibble is 1, the low 3 nibbles specify the address.
-       * E.g., 0x1ABC means pc = 0xABC on execution.
+       * 1NNN - JP addr: Jump to address NNN.
+       * Sets the program counter to the address specified by the lower 12 bits of the opcode.
        */
-      uint16_t address = opcode & 0x0FFF; // Extract the lower 12 bits as the address.
-      pc = address;                       // Set program counter to that address.
+      uint16_t address = opcode & 0x0FFF;
+      pc = address;
       break;
     }
     case 0x2000:
     {
       /**
-       * 2NNN: CALL addr
-       * Call a subroutine at address NNN. This means:
-       *   1) Push the current pc on the stack.
-       *   2) pc = NNN.
-       * Here, we just log it. A real implementation would maintain a stack pointer
-       * and an array for stack addresses.
+       * 2NNN - CALL addr: Call subroutine at address NNN.
+       * Pushes the current pc+2 onto the stack, increments the stack pointer,
+       * and sets pc to the address NNN.
        */
-      printf("Call opcode 0x%04X encountered, but subroutine support not implemented.\n", opcode);
-      pc += 2; // Skip for now.
+      if (sp < 16)
+      {
+        stack[sp] = pc + 2;
+        sp++;
+        pc = opcode & 0x0FFF;
+      }
+      else
+      {
+        printf("Stack overflow on CALL opcode: 0x%04X\n", opcode);
+        pc += 2;
+      }
       break;
     }
     case 0x3000:
     {
       /**
-       * 3XNN: SE Vx, byte
-       * Skip next instruction if Vx == NN. If the value in register Vx equals NN,
-       * pc is advanced by an additional 2 bytes (i.e., skip the next instruction).
+       * 3XNN - SE Vx, byte: Skip next instruction if Vx equals NN.
+       * If register Vx equals NN, pc is increased by 4; otherwise, by 2.
        */
-      uint8_t x = (opcode & 0x0F00) >> 8; // Extract register index X.
-      uint8_t nn = opcode & 0x00FF;       // Extract the immediate byte NN.
+      uint8_t x = (opcode & 0x0F00) >> 8;
+      uint8_t nn = opcode & 0x00FF;
       if (V[x] == nn)
-      {
-        pc += 4; // Skip next instruction (2 bytes per instruction).
-      }
+        pc += 4;
       else
-      {
-        pc += 2; // Just move to next instruction.
-      }
+        pc += 2;
+      break;
+    }
+    case 0x4000:
+    {
+      /**
+       * 4XNN - SNE Vx, byte: Skip next instruction if Vx does NOT equal NN.
+       * If register Vx does not equal NN, pc is increased by 4; otherwise, by 2.
+       */
+      uint8_t x = (opcode & 0x0F00) >> 8;
+      uint8_t nn = opcode & 0x00FF;
+      if (V[x] != nn)
+        pc += 4;
+      else
+        pc += 2;
       break;
     }
     case 0x6000:
     {
       /**
-       * 6XNN: LD Vx, NN
-       * Set register Vx to the immediate value NN.
-       * E.g., 0x6A05 => V[A] = 0x05
+       * 6XNN - LD Vx, byte: Load immediate value NN into register Vx.
+       * E.g., 0x6A05 loads the value 0x05 into register VA.
        */
-      uint8_t x = (opcode & 0x0F00) >> 8; // Register index X.
-      uint8_t nn = opcode & 0x00FF;       // Immediate value NN.
+      uint8_t x = (opcode & 0x0F00) >> 8;
+      uint8_t nn = opcode & 0x00FF;
       V[x] = nn;
       pc += 2;
       break;
@@ -170,90 +215,294 @@ extern "C"
     case 0x7000:
     {
       /**
-       * 7XNN: ADD Vx, byte
-       * Add the immediate value NN to register Vx (no carry flag in standard Chip-8).
-       * E.g., 0x7A01 => V[A] += 1
+       * 7XNN - ADD Vx, byte: Add immediate value NN to register Vx.
+       * This operation does not affect any carry flag.
        */
-      uint8_t x = (opcode & 0x0F00) >> 8; // Register index X.
-      uint8_t nn = opcode & 0x00FF;       // Immediate value NN.
+      uint8_t x = (opcode & 0x0F00) >> 8;
+      uint8_t nn = opcode & 0x00FF;
       V[x] += nn;
       pc += 2;
+      break;
+    }
+    case 0x8000:
+    {
+      /**
+       * 8XY_ instructions: Arithmetic and logical operations between registers Vx and Vy.
+       * The lowest nibble of the opcode determines the operation.
+       */
+      uint8_t x = (opcode & 0x0F00) >> 8;
+      uint8_t y = (opcode & 0x00F0) >> 4;
+      switch (opcode & 0x000F)
+      {
+      case 0x0:
+        /**
+         * 8XY0 - LD Vx, Vy: Set Vx = Vy.
+         */
+        V[x] = V[y];
+        pc += 2;
+        break;
+      case 0x1:
+        /**
+         * 8XY1 - OR Vx, Vy: Set Vx = Vx OR Vy.
+         */
+        V[x] |= V[y];
+        pc += 2;
+        break;
+      case 0x2:
+        /**
+         * 8XY2 - AND Vx, Vy: Set Vx = Vx AND Vy.
+         */
+        V[x] &= V[y];
+        pc += 2;
+        break;
+      case 0x3:
+        /**
+         * 8XY3 - XOR Vx, Vy: Set Vx = Vx XOR Vy.
+         */
+        V[x] ^= V[y];
+        pc += 2;
+        break;
+      case 0x4:
+      {
+        /**
+         * 8XY4 - ADD Vx, Vy: Add Vy to Vx.
+         * Set VF to 1 if there is a carry, else 0.
+         */
+        uint16_t sum = V[x] + V[y];
+        V[0xF] = (sum > 0xFF) ? 1 : 0;
+        V[x] = sum & 0xFF;
+        pc += 2;
+        break;
+      }
+      case 0x5:
+      {
+        /**
+         * 8XY5 - SUB Vx, Vy: Subtract Vy from Vx.
+         * Set VF to 1 if Vx > Vy (no borrow), else 0.
+         */
+        V[0xF] = (V[x] > V[y]) ? 1 : 0;
+        V[x] = V[x] - V[y];
+        pc += 2;
+        break;
+      }
+      case 0x6:
+      {
+        /**
+         * 8XY6 - SHR Vx: Shift Vx right by 1.
+         * The least significant bit of Vx is stored in VF.
+         */
+        V[0xF] = V[x] & 0x1;
+        V[x] >>= 1;
+        pc += 2;
+        break;
+      }
+      case 0x7:
+      {
+        /**
+         * 8XY7 - SUBN Vx, Vy: Set Vx = Vy - Vx.
+         * Set VF to 1 if Vy > Vx (no borrow), else 0.
+         */
+        V[0xF] = (V[y] > V[x]) ? 1 : 0;
+        V[x] = V[y] - V[x];
+        pc += 2;
+        break;
+      }
+      case 0xE:
+      {
+        /**
+         * 8XYE - SHL Vx: Shift Vx left by 1.
+         * The most significant bit of Vx is stored in VF.
+         */
+        V[0xF] = (V[x] & 0x80) >> 7;
+        V[x] <<= 1;
+        pc += 2;
+        break;
+      }
+      default:
+        printf("Unsupported 8XY_ opcode: 0x%04X\n", opcode);
+        pc += 2;
+        break;
+      }
+      break;
+    }
+    case 0x9000:
+    {
+      /**
+       * 9XY0 - SNE Vx, Vy: Skip next instruction if Vx != Vy.
+       */
+      uint8_t x = (opcode & 0x0F00) >> 8;
+      uint8_t y = (opcode & 0x00F0) >> 4;
+      pc += (V[x] != V[y]) ? 4 : 2;
       break;
     }
     case 0xA000:
     {
       /**
-       * ANNN: LD I, addr
-       * Set the index register I to the address NNN.
-       * E.g., 0xA2F0 => I = 0x2F0
+       * ANNN - LD I, addr: Load the 12-bit address NNN into the index register I.
        */
-      I = opcode & 0x0FFF; // Extract the lower 12 bits as the address.
+      I = opcode & 0x0FFF;
+      pc += 2;
+      break;
+    }
+    case 0xB000:
+    {
+      /**
+       * BNNN - JP V0, addr: Jump to address NNN plus the value of V0.
+       */
+      uint16_t address = opcode & 0x0FFF;
+      pc = address + V[0];
+      break;
+    }
+    case 0xC000:
+    {
+      /**
+       * CXNN - RND Vx, byte: Set Vx = (random byte) AND NN.
+       * Generates a random number between 0 and 255, ANDs it with NN, and stores the result in Vx.
+       */
+      uint8_t x = (opcode & 0x0F00) >> 8;
+      uint8_t nn = opcode & 0x00FF;
+      V[x] = (std::rand() % 256) & nn;
       pc += 2;
       break;
     }
     case 0xD000:
     {
       /**
-       * DXYN: DRW Vx, Vy, nibble
-       * Draw a sprite at coordinates (Vx, Vy) with a height of N rows (where N is the
-       * lowest 4 bits of the opcode). Each row of the sprite is 8 bits wide, and is
-       * read from memory starting at address I. The drawing is done by XORing each
-       * sprite bit with the existing screen pixel.
-       *
-       * Format:
-       *   - x = V[(opcode & 0x0F00) >> 8]  => the X coordinate
-       *   - y = V[(opcode & 0x00F0) >> 4]  => the Y coordinate
-       *   - height = opcode & 0x000F       => the number of sprite rows
-       *
-       * For each row:
-       *   - spriteByte = memory[I + row]   => 8 bits of sprite data
-       *   - bit 7 is the leftmost pixel, bit 0 is the rightmost
-       *   - we XOR each pixel with the screen
-       *
-       * Note: In a full emulator, you'd also set VF if there's a collision. This minimal
-       * version omits collision detection.
+       * DXYN - DRW Vx, Vy, nibble: Draw a sprite at (Vx, Vy) with height N.
+       * The sprite is read from memory starting at address I, where each row is 8 bits wide.
+       * Drawing is performed using XOR, toggling the pixels on the screen.
+       * (Note: In a full emulator, VF is set to 1 if any pixels are erased (collision detection).)
        */
       uint8_t x = V[(opcode & 0x0F00) >> 8];
       uint8_t y = V[(opcode & 0x00F0) >> 4];
       uint8_t height = opcode & 0x000F;
-
       for (int row = 0; row < height; row++)
       {
-        uint8_t spriteByte = memory[I + row]; // Each row is 1 byte (8 pixels).
+        uint8_t spriteByte = memory[I + row];
         for (int col = 0; col < 8; col++)
         {
-          // Extract the bit (pixel) from spriteByte.
-          // (spriteByte >> (7 - col)) & 1 => leftmost bit is col=0, rightmost is col=7.
+          // Extract each bit; bit 7 is the leftmost pixel.
           uint8_t spritePixel = (spriteByte >> (7 - col)) & 0x1;
-
-          // Compute the screen coordinates.
           int sx = (x + col) % SCREEN_WIDTH;
           int sy = (y + row) % SCREEN_HEIGHT;
-
-          // XOR the pixel: if the pixel was 0, it becomes spritePixel;
-          // if it was 1, it flips (1 -> 0 or 0 -> 1).
           screen[sy * SCREEN_WIDTH + sx] ^= spritePixel;
         }
       }
-
-      pc += 2; // Move to the next instruction.
+      pc += 2;
+      break;
+    }
+    case 0xE000:
+    {
+      /**
+       * EX9E / EXA1 - Key input instructions.
+       * EX9E: Skip next instruction if the key corresponding to the value in Vx is pressed.
+       * EXA1: Skip next instruction if the key corresponding to the value in Vx is NOT pressed.
+       * The key state is determined by a global keys array (keys[0] through keys[15]).
+       */
+      uint8_t x = (opcode & 0x0F00) >> 8;
+      uint8_t key = V[x] & 0x0F; // Chip-8 keys are in the range 0-F.
+      switch (opcode & 0x00FF)
+      {
+      case 0x9E:
+        pc += (keys[key] ? 4 : 2);
+        break;
+      case 0xA1:
+        pc += (!keys[key] ? 4 : 2);
+        break;
+      default:
+        printf("Unsupported E- prefix opcode: 0x%04X\n", opcode);
+        pc += 2;
+        break;
+      }
       break;
     }
     case 0xF000:
     {
       /**
-       * Fx?? instructions can handle timers, keyboard input, storing/loading registers,
-       * and other advanced features. We have not implemented them here, so we log them.
+       * Fx-- instructions cover a range of operations.
+       * In this implementation, we support:
+       *
+       * Fx07 - LD Vx, DT   : Load the current delay timer value into Vx.
+       * Fx15 - LD DT, Vx   : Set the delay timer to the value in Vx.
+       * Fx18 - LD ST, Vx   : Set the sound timer to the value in Vx.
+       * Fx1E - ADD I, Vx    : Add Vx to the index register I.
+       * Fx29 - LD F, Vx    : Set I to the location of the sprite for the hexadecimal digit in Vx.
+       * Fx33 - LD B, Vx    : Store the BCD representation of Vx in memory at I, I+1, and I+2.
+       * Fx55 - LD [I], V0..Vx  : Store registers V0 through Vx in memory starting at I.
+       * Fx65 - LD V0..Vx, [I]  : Read registers V0 through Vx from memory starting at I.
        */
-      printf("Unsupported Fx opcode: 0x%04X\n", opcode);
-      pc += 2;
+      uint8_t x = (opcode & 0x0F00) >> 8;
+      uint8_t kk = opcode & 0x00FF;
+      switch (kk)
+      {
+      case 0x07:
+        // Fx07: LD Vx, DT – Load delay timer into Vx.
+        V[x] = delayTimer;
+        pc += 2;
+        break;
+      case 0x15:
+        // Fx15: LD DT, Vx – Set delay timer to the value in Vx.
+        delayTimer = V[x];
+        pc += 2;
+        break;
+      case 0x18:
+        // Fx18: LD ST, Vx – Set sound timer to the value in Vx.
+        soundTimer = V[x];
+        pc += 2;
+        break;
+      case 0x1E:
+        // Fx1E: ADD I, Vx – Add Vx to the index register I.
+        I += V[x];
+        pc += 2;
+        break;
+      case 0x29:
+        // Fx29: LD F, Vx – Set I to the location of the sprite for the hexadecimal digit in Vx.
+        // Conventionally, the font sprites are stored in memory starting at address 0x50, with each sprite 5 bytes long.
+        I = 0x50 + (V[x] * 5);
+        pc += 2;
+        break;
+      case 0x33:
+      {
+        // Fx33: LD B, Vx – Store the BCD representation of Vx in memory at I, I+1, and I+2.
+        uint8_t value = V[x];
+        memory[I] = value / 100;
+        memory[I + 1] = (value / 10) % 10;
+        memory[I + 2] = value % 10;
+        pc += 2;
+        break;
+      }
+      case 0x55:
+      {
+        // Fx55: LD [I], V0..Vx – Store registers V0 through Vx in memory starting at I.
+        for (int i = 0; i <= x; i++)
+        {
+          memory[I + i] = V[i];
+        }
+        pc += 2;
+        break;
+      }
+      case 0x65:
+      {
+        // Fx65: LD V0..Vx, [I] – Read registers V0 through Vx from memory starting at I.
+        for (int i = 0; i <= x; i++)
+        {
+          V[i] = memory[I + i];
+        }
+        pc += 2;
+        break;
+      }
+      default:
+        printf("Unsupported Fx opcode: 0x%04X\n", opcode);
+        pc += 2;
+        break;
+      }
       break;
     }
     default:
     {
       /**
-       * If the high nibble is something we haven't handled (e.g., 4, 5, 8, 9, B, C, E),
-       * or an unrecognized pattern, we log and skip.
+       * For any opcode that doesn't match the above cases,
+       * log the unsupported opcode and move to the next instruction.
        */
       printf("Unsupported opcode: 0x%04X\n", opcode);
       pc += 2;
@@ -262,12 +511,29 @@ extern "C"
     }
   }
 
-  // Run a specified number of cycles.
-  void runCycles(int numCycles)
+  void updateTimers()
   {
+    if (delayTimer > 0)
+      delayTimer--;
+    if (soundTimer > 0)
+      soundTimer--;
+  }
+
+  // Run a specified number of cycles.
+  void run(int numCycles, double deltaMs)
+  {
+    // 1) Run CPU cycles
     for (int i = 0; i < numCycles; i++)
     {
       emulateCycle();
+    }
+
+    // 2) Accumulate time, decrement timers at 60 Hz
+    timerAccumulator += (float)deltaMs;
+    while (timerAccumulator >= TIMER_INTERVAL_MS)
+    {
+      updateTimers();
+      timerAccumulator -= TIMER_INTERVAL_MS;
     }
   }
 
@@ -287,6 +553,11 @@ extern "C"
   int getScreenHeight()
   {
     return SCREEN_HEIGHT;
+  }
+
+  uint8_t getSoundTimer()
+  {
+    return soundTimer;
   }
 
 } // extern "C"
