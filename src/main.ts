@@ -67,7 +67,7 @@ const fragmentShaderSource = `
 // Load the Pong.ch8 program from the public directory.
 async function loadChip8Program(): Promise<Uint8Array> {
   // Change the URL to your ROM file name.
-  const response = await fetch('/pong.ch8');
+  const response = await fetch('/tetris.ch8');
   const buffer = await response.arrayBuffer();
   return new Uint8Array(buffer);
 }

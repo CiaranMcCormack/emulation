@@ -392,23 +392,30 @@ extern "C"
        * DXYN - DRW Vx, Vy, nibble: Draw a sprite at (Vx, Vy) with height N.
        * The sprite is read from memory starting at address I, where each row is 8 bits wide.
        * Drawing is performed using XOR, toggling the pixels on the screen.
-       * (Note: In a full emulator, VF is set to 1 if any pixels are erased (collision detection).)
+       * VF is set to 1 if any pixel is erased (collision), otherwise 0.
        */
       uint8_t x = V[(opcode & 0x0F00) >> 8];
       uint8_t y = V[(opcode & 0x00F0) >> 4];
       uint8_t height = opcode & 0x000F;
+      uint8_t collision = 0;
+
       for (int row = 0; row < height; row++)
       {
         uint8_t spriteByte = memory[I + row];
         for (int col = 0; col < 8; col++)
         {
-          // Extract each bit; bit 7 is the leftmost pixel.
           uint8_t spritePixel = (spriteByte >> (7 - col)) & 0x1;
           int sx = (x + col) % SCREEN_WIDTH;
           int sy = (y + row) % SCREEN_HEIGHT;
+          // Check existing pixel before XOR
+          if (screen[sy * SCREEN_WIDTH + sx] && spritePixel)
+          {
+            collision = 1;
+          }
           screen[sy * SCREEN_WIDTH + sx] ^= spritePixel;
         }
       }
+      V[0xF] = collision; // Set VF = collision flag
       pc += 2;
       break;
     }
